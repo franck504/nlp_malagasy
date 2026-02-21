@@ -5,11 +5,13 @@ __pycache__/
 venv/
 .env
 
-# Data / Output
+# Data / Output (Scraping & NLP)
+tononkira_rehetra/output/
+tononkira_rehetra/artists.json
+tononkira_rehetra/malagasy_lyrics_corpus.txt
+tononkira_rehetra/malagasy_lyrics_cleaned.txt
 output/
 output_test/
-tononkira_raw_texts/
-raw_texts/
 *.zip
 *.log
 

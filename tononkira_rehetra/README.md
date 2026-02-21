@@ -63,8 +63,15 @@ python3 05_clean_corpus.py --input malagasy_lyrics_corpus.txt --output malagasy_
 ### Phase 4.5 : Consolidation (Mélange de sources)
 
 ```bash
-# Fusionne les lyrics nettoyés avec la Bible Malgache
-python3 06_consolidate_corpus.py --lyrics malagasy_lyrics_cleaned.txt --bible ../from_bible_json --output malagasy_corpus_v1.txt
+# Fusionne les lyrics nettoyés avec la Bible Malgache (Dédoublonage inclus)
+python3 06_consolidate_corpus.py --lyrics malagasy_lyrics_cleaned.txt --bible ../from_bible_json --output malagasy_corpus_v1_fixed.txt
+```
+
+### Phase 5 : Tokenisation (Modèle BPE)
+
+```bash
+# Entraîne le tokenizer sur le corpus consolidé
+python3 07_train_tokenizer.py --corpus malagasy_corpus_v1_fixed.txt --output tokenizer_mg
 ```
 
 ---
@@ -81,9 +88,11 @@ tononkira_rehetra/
 ├── output/                     # Dossiers par artiste (Phase 2)
 ├── malagasy_lyrics_corpus.txt  # Corpus brut (Phase 4)
 ├── malagasy_lyrics_cleaned.txt # Corpus purifié (Phase 5)
+├── malagasy_corpus_v1_fixed.txt # Corpus final consolidé ✨
 ├── 05_clean_corpus.py          # Script de nettoyage
-├── 06_consolidate_corpus.py     # Script de fusion Lyrics + Bible
-└── malagasy_corpus_v1.txt      # Corpus final consolidé ✨
+├── 06_consolidate_corpus.py     # Script de fusion
+├── 07_train_tokenizer.py       # Apprentissage patterns (Phase 5)
+└── tokenizer_mg/               # Modèle de découpage final
 ```
 
 ---

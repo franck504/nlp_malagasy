@@ -33,19 +33,27 @@ def consolidate_corpus(lyrics_path, bible_dir, output_path):
             if not os.path.exists(full_bible_path):
                 continue
                 
-            for filename in os.listdir(full_bible_path):
+            for filename in sorted(os.listdir(full_bible_path)):
                 if filename.endswith('.json'):
                     file_path = os.path.join(full_bible_path, filename)
                     try:
                         with open(file_path, 'r', encoding='utf-8') as f_json:
                             data = json.load(f_json)
-                            # La structure est { "chapitre": { "verset": "texte" } }
-                            for chapter in data.values():
-                                for verse_text in chapter.values():
-                                    if clean_text:
-                                        f_out.write(clean_text + "\n")
-                                        bible_blocks += 1
-                                        total_blocks += 1
+                            
+                            # On parcourt les chapitres
+                            for key, chapter in data.items():
+                                # On ignore la clé 'meta' qui contient des stats
+                                if key == "meta" or not isinstance(chapter, dict):
+                                    continue
+                                
+                                for v_key, verse_text in chapter.items():
+                                    # Sécurité : on ne prend que si c'est du texte (str)
+                                    if isinstance(verse_text, str):
+                                        clean_text = verse_text.strip()
+                                        if clean_text:
+                                            f_out.write(clean_text + "\n")
+                                            bible_blocks += 1
+                                            total_blocks += 1
                     except Exception as e:
                         print(f"   ❌ Erreur sur {filename}: {e}")
 

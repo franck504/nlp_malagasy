@@ -1,0 +1,36 @@
+# Archives et backups
+_archive/
+*_backup.txt
+*.bak
+
+# Fichiers de test
+*_test.txt
+test_*.txt
+
+# Fichiers temporaires
+*.tmp
+.*.txt
+
+# Dossiers temporaires
+raw_texts (1)/
+
+# Logs
+*.log
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

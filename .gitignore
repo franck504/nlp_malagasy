@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Data / Output
+output/
+output_test/
+tononkira_raw_texts/
+raw_texts/
+*.zip
+*.log
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Git
+.git/

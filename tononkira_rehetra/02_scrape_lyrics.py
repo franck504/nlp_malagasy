@@ -15,6 +15,7 @@ import logging
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
 from bs4 import BeautifulSoup
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 BASE_URL = "https://tononkira.serasera.org"
@@ -204,8 +205,27 @@ def save_song(output_dir, titre_slug, song_info, song_url):
 # SCRAPING D'UN ARTISTE
 # ============================================================
 
-def scrape_artist(artist_data, output_base, delay=2, logger=None):
-    """Scrape toutes les chansons d'un artiste."""
+def download_song_task(song_url, titre_slug, artist_dir, delay, logger):
+    """Tâche individuelle de téléchargement d'une chanson pour multi-threading."""
+    # Vérifier si déjà scrapé (resume)
+    expected_file = artist_dir / (sanitize_filename(titre_slug) + ".txt")
+    if expected_file.exists():
+        return "skipped", expected_file.name
+
+    html = fetch_page(song_url)
+    if not html:
+        return "failed", titre_slug
+
+    song_info = extract_song_info(html, song_url)
+    if not song_info or len(song_info["lyrics"]) < 50:
+        return "too_short", titre_slug
+
+    filepath = save_song(artist_dir, titre_slug, song_info, song_url)
+    return "saved", filepath.name
+
+
+def scrape_artist(artist_data, output_base, delay=2, logger=None, workers=1):
+    """Scrape toutes les chansons d'un artiste en utilisant le multi-threading."""
     logger = logger or logging.getLogger(__name__)
     slug = artist_data["slug"]
     name = artist_data["name"]
@@ -245,41 +265,36 @@ def scrape_artist(artist_data, output_base, delay=2, logger=None):
             seen_urls.add(url)
             unique_songs.append((url, titre))
 
-    logger.info(f"  🎵 {len(unique_songs)} chansons trouvées")
+    logger.info(f"  🎵 {len(unique_songs)} chansons trouvées (Mode: {workers} workers)")
 
-    # Étape 2 : Scraper chaque chanson
+    # Étape 2 : Scraper chaque chanson en parallèle
     saved = 0
     skipped = 0
     failed = 0
 
-    for i, (song_url, titre_slug) in enumerate(unique_songs, 1):
-        # Vérifier si déjà scrapé (resume)
-        expected_file = artist_dir / (sanitize_filename(titre_slug) + ".txt")
-        if expected_file.exists():
-            skipped += 1
-            continue
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {
+            executor.submit(download_song_task, url, titre, artist_dir, delay, logger): (url, titre)
+            for url, titre in unique_songs
+        }
 
-        logger.info(f"  [{i}/{len(unique_songs)}] {titre_slug} ...")
-
-        html = fetch_page(song_url)
-        if not html:
-            logger.error("    ❌")
-            failed += 1
-            time.sleep(delay)
-            continue
-
-        song_info = extract_song_info(html, song_url)
-        if not song_info or len(song_info["lyrics"]) < 50:
-            logger.warning("    ⏭️ paroles trop courtes ou introuvables")
-            failed += 1
-            time.sleep(delay)
-            continue
-
-        filepath = save_song(artist_dir, titre_slug, song_info, song_url)
-        logger.info(f"    💾 {filepath.name}")
-        saved += 1
-
-        time.sleep(delay)
+        for idx, future in enumerate(as_completed(futures), 1):
+            try:
+                status, info = future.result()
+                if status == "saved":
+                    logger.info(f"  [{idx}/{len(unique_songs)}] 💾 {info}")
+                    saved += 1
+                elif status == "skipped":
+                    skipped += 1
+                elif status == "failed":
+                    logger.error(f"  [{idx}/{len(unique_songs)}] ❌ {info}")
+                    failed += 1
+                elif status == "too_short":
+                    logger.warning(f"  [{idx}/{len(unique_songs)}] ⏭️ {info} (trop court)")
+                    failed += 1
+            except Exception as e:
+                logger.error(f"  ❌ Erreur lors du téléchargement : {e}")
+                failed += 1
 
     logger.info(f"\n  📊 Résultat : {saved} sauvées, {skipped} déjà existantes, {failed} échouées")
     return saved, skipped, failed
@@ -290,7 +305,7 @@ def scrape_artist(artist_data, output_base, delay=2, logger=None):
 # ============================================================
 
 def run_scraping(artists_file="artists.json", output_dir="output",
-                 delay=2.0, start_from=0, artist_slug=None):
+                 delay=2.0, start_from=0, artist_slug=None, workers=1):
     """Pipeline principal : lit artists.json et scrape tout."""
     
     # Configuration du logging
@@ -309,6 +324,7 @@ def run_scraping(artists_file="artists.json", output_dir="output",
     logger.info("🎵 PHASE 2 : SCRAPING DES PAROLES")
     logger.info(f"   Source : {artists_file}")
     logger.info(f"   Sortie : {output_dir}/")
+    logger.info(f"   Mode   : {'Parallel (' + str(workers) + ' workers)' if workers > 1 else 'Sequential'}")
     logger.info("=" * 70)
 
     # Charger la liste des artistes
@@ -349,7 +365,7 @@ def run_scraping(artists_file="artists.json", output_dir="output",
         logger.info(f"  Progression : {idx + 1}/{len(artists)}")
         logger.info(f"{'━' * 70}")
 
-        saved, skipped, failed = scrape_artist(artist, output_base, delay, logger)
+        saved, skipped, failed = scrape_artist(artist, output_base, delay, logger, workers)
         total_saved += saved
         total_skipped += skipped
         total_failed += failed
@@ -393,6 +409,10 @@ if __name__ == "__main__":
         "--artist", type=str, default=None,
         help="Scraper un seul artiste par son slug (ex: mahaleo)"
     )
+    parser.add_argument(
+        "--workers", type=int, default=1,
+        help="Nombre de threads pour le téléchargement parallèle (défaut: 1)"
+    )
     args = parser.parse_args()
 
     run_scraping(
@@ -400,5 +420,6 @@ if __name__ == "__main__":
         output_dir=args.output,
         delay=args.delay,
         start_from=args.start_from,
-        artist_slug=args.artist
+        artist_slug=args.artist,
+        workers=args.workers
     )

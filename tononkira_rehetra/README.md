@@ -41,6 +41,7 @@ python3 02_scrape_lyrics.py --start-from 50
 | `--artists-file`  | Fichier JSON des artistes            | `artists.json` |
 | `--output`        | Dossier de sortie                    | `output/`      |
 | `--delay`         | Délai entre requêtes (secondes)      | `2.0`          |
+| `--workers`       | Nombre de threads parallèles         | `1`            |
 | `--start-from`    | Commencer à l'artiste N (0-indexé)   | `0`            |
 | `--artist`        | Scraper un seul artiste (par slug)   | —              |
 

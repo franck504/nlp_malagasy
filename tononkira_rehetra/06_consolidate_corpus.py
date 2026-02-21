@@ -42,7 +42,6 @@ def consolidate_corpus(lyrics_path, bible_dir, output_path):
                             # La structure est { "chapitre": { "verset": "texte" } }
                             for chapter in data.values():
                                 for verse_text in chapter.values():
-                                    clean_text = verse_text.strip()
                                     if clean_text:
                                         f_out.write(clean_text + "\n")
                                         bible_blocks += 1

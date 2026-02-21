@@ -23,17 +23,11 @@ python3 01_discover_artists.py
 | `--delay`   | Délai entre requêtes (secondes)     | `2.0`         |
 | `--output`  | Fichier JSON de sortie              | `artists.json`|
 
-### Phase 2 : Scraper les paroles
+### Phase 2 : Scraper les paroles (Turbo)
 
 ```bash
-# Tout scraper
-python3 02_scrape_lyrics.py
-
-# Un seul artiste
-python3 02_scrape_lyrics.py --artist mahaleo
-
-# Reprendre à partir de l'artiste #50
-python3 02_scrape_lyrics.py --start-from 50
+# Tout scraper à haute vitesse (recommandé sur Colab)
+python3 02_scrape_lyrics.py --delay 0.5 --artist-workers 4 --song-workers 10
 ```
 
 | Option            | Description                         | Défaut         |
@@ -41,12 +35,10 @@ python3 02_scrape_lyrics.py --start-from 50
 | `--artists-file`  | Fichier JSON des artistes            | `artists.json` |
 | `--output`        | Dossier de sortie                    | `output/`      |
 | `--delay`         | Délai entre requêtes (secondes)      | `1.0`          |
-| `--artist-workers`| Nombre d'artistes en parallèle       | `1`            |
-| `--song-workers`  | Nombre de chansons en parallèle      | `5`            |
+| `--artist-workers`| Nombre d'artistes en parallèle (TP)  | `1`            |
+| `--song-workers`  | Nombre de chansons en parallèle (TP) | `5`            |
 | `--start-from`    | Commencer à l'artiste N (0-indexé)   | `0`            |
 | `--artist`        | Scraper un seul artiste (par slug)   | —              |
-
-> 💡 Le mode **resume** est intégré : les chansons déjà téléchargées sont automatiquement ignorées.
 
 ### Phase 3 : Statistiques
 
@@ -54,54 +46,35 @@ python3 02_scrape_lyrics.py --start-from 50
 python3 03_stats.py
 ```
 
-## ☁️ Exécution sur Google Colab (Recommandé pour long runs)
+### Phase 4 : Fusion du Corpus
 
-Le scraping complet peut prendre plusieurs heures. Utiliser Google Colab avec Google Drive est la meilleure solution pour éviter de perdre les données.
+```bash
+# Fusionne tous les fichiers .txt en un seul gros corpus brut
+python3 04_merge_corpus.py
+```
 
-### Méthode via Google Drive
+### Phase 5 : Purification (Nettoyage NLP)
 
-1.  **ZIP** : Compressez le dossier `tononkira_rehetra` en ZIP.
-2.  **Upload** : Uploadez le ZIP sur votre **Google Drive** et décompressez-le (ou uploadez le dossier directement).
-3.  **Ouvrir** : Dans Google Colab, ouvrez le fichier [`Tononkira_Scraper_Colab.ipynb`](file:///mnt/01DB93AE0391F010/videos%202026/voambolana_malagasy/tononkira_rehetra/Tononkira_Scraper_Colab.ipynb).
-4.  **Drive mount** : Exécutez la cellule de montage du Drive et naviguez vers le dossier avec `%cd`.
-5.  **Lancer** : Suivez les étapes du notebook.
+```bash
+# Filtre les phrases non-malgaches et nettoie le texte
+python3 05_clean_corpus.py --input malagasy_lyrics_corpus.txt --output malagasy_lyrics_cleaned.txt
+```
 
-## 📁 Structure de sortie
+---
+
+## ☁️ Exécution sur Google Colab
+
+Le notebook [`Voambolana_Malagasy_Main.ipynb`](file:///mnt/01DB93AE0391F010/videos%202026/voambolana_malagasy/Voambolana_Malagasy_Main.ipynb) est le centre de commande pour exécuter ces étapes sur le cloud et sauvegarder sur Google Drive.
+
+## 📁 Structure de sortie finalisée
 
 ```
 tononkira_rehetra/
-├── 01_discover_artists.py
-├── 02_scrape_lyrics.py
-├── 03_stats.py
-├── README.md
-├── artists.json               ← Phase 1
-└── output/                    ← Phase 2
-    ├── mahaleo/
-    │   ├── ravorombazaha.txt
-    │   ├── ry-tanindrazana.txt
-    │   └── ...
-    ├── ambondrona/
-    │   ├── aza-adino.txt
-    │   └── ...
-    └── ...
+├── artists.json                # Liste des artistes (Phase 1)
+├── output/                     # Dossiers par artiste (Phase 2)
+├── malagasy_lyrics_corpus.txt  # Corpus brut (Phase 4)
+└── malagasy_lyrics_cleaned.txt # Corpus propre (Phase 5) ✨
 ```
 
-### Format d'un fichier `.txt`
-
-```
-Titre: Ravorombazaha
-Artiste: Mahaleo
-Source: https://tononkira.serasera.org/hira/mahaleo/ravorombazaha
 ---
-[paroles de la chanson]
-```
-
-## 🔄 Différences vs `from_tononkira_serasera/`
-
-| Fonctionnalité         | Ancien scraper             | Ce projet                  |
-|------------------------|----------------------------|----------------------------|
-| Artistes               | 13 codés en dur            | Auto-découverte (~2 000+)  |
-| Organisation           | Fichiers plats             | Dossier par artiste        |
-| Métadonnées            | Non                        | Titre + Artiste + Source   |
-| Resume                 | Non                        | Oui                        |
-| CLI                    | Non                        | `--artist`, `--start-from` |
+**NLP Malagasy Foundation Phase** 🇲🇬🚀

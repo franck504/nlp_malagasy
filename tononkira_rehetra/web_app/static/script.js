@@ -2,19 +2,23 @@ const editor = document.getElementById('editor');
 const overlay = document.getElementById('overlay');
 const suggestionsBar = document.getElementById('suggestions');
 const wordCountDisplay = document.getElementById('word-count');
-const statusDisplay = document.getElementById('status');
+const statusDisplay = document.getElementById('status-text');
+const statusDot = document.getElementById('status-dot');
 
 let debounceTimer;
 
 editor.addEventListener('input', () => {
     updateWordCount();
-    updateOverlay();
+    syncOverlay();
+
+    // UI Feedback: Busy
+    statusDot.classList.add('busy');
+    statusDisplay.innerText = "Famakafakana...";
 
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
-        checkSpelling();
-        getPredictions();
-    }, 400); // Un peu plus rapide
+        analyzeText();
+    }, 450);
 });
 
 function updateWordCount() {
@@ -23,7 +27,7 @@ function updateWordCount() {
     wordCountDisplay.innerText = `${count} teny`;
 }
 
-function updateOverlay() {
+function syncOverlay() {
     overlay.innerText = editor.value;
     overlay.scrollTop = editor.scrollTop;
 }
@@ -32,39 +36,68 @@ editor.addEventListener('scroll', () => {
     overlay.scrollTop = editor.scrollTop;
 });
 
-async function checkSpelling() {
+async function analyzeText() {
     const text = editor.value;
     if (!text) {
         overlay.innerHTML = "";
+        suggestionsBar.innerHTML = "";
+        statusDot.classList.remove('busy');
+        statusDisplay.innerText = "Vonona";
         return;
     }
 
     try {
-        const response = await fetch('/check', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text })
-        });
-        const data = await response.json();
-        const errors = data.errors;
+        // En parallèle : Correction + Prédiction
+        const [checkRes, predRes] = await Promise.all([
+            fetch('/check', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text })
+            }),
+            fetch('/predict', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text })
+            })
+        ]);
 
-        if (errors.length > 0) {
-            statusDisplay.innerText = `Sava-ria: ${errors.length} fahadisoana hita`;
-            highlightErrors(text, errors);
+        const checkData = await checkRes.json();
+        const predData = await predRes.json();
+
+        // 1. Update Errors
+        highlightErrors(text, checkData.errors);
+
+        // 2. Update Suggestions
+        displaySuggestions(predData.suggestions, predData.type);
+
+        // 3. Update Status
+        statusDot.classList.remove('busy');
+        if (checkData.errors.length > 0) {
+            statusDisplay.innerText = `${checkData.errors.length} fahadisoana`;
         } else {
-            statusDisplay.innerText = "Sava-ria: Madio";
-            overlay.innerText = text;
+            statusDisplay.innerText = "Madio";
         }
+
     } catch (e) {
-        console.error("Erreur de correction:", e);
+        console.error("Erreur d'analyse:", e);
+        statusDot.classList.remove('busy');
+        statusDisplay.innerText = "Erreur Backend";
     }
 }
 
 function highlightErrors(text, errors) {
-    let html = text;
+    if (errors.length === 0) {
+        overlay.innerText = text;
+        return;
+    }
+
+    let html = text.replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
+
+    // Tri par longueur décroissante pour ne pas casser les remplacements imbriqués
     const sortedErrors = [...new Set(errors)].sort((a, b) => b.length - a.length);
 
     sortedErrors.forEach(err => {
+        // Utilisation d'un regex qui respecte les limites de mots malgaches
         const regex = new RegExp(`\\b${err}\\b`, 'g');
         html = html.replace(regex, `<span class="error">${err}</span>`);
     });
@@ -72,33 +105,17 @@ function highlightErrors(text, errors) {
     overlay.innerHTML = html;
 }
 
-async function getPredictions() {
-    const text = editor.value;
-    if (!text) {
-        suggestionsBar.innerHTML = "";
-        return;
-    }
-
-    try {
-        const response = await fetch('/predict', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text })
-        });
-        const data = await response.json();
-        displaySuggestions(data.suggestions, data.type);
-    } catch (e) {
-        console.error("Erreur de prédiction:", e);
-    }
-}
-
 function displaySuggestions(suggestions, type) {
     suggestionsBar.innerHTML = "";
+    if (suggestions.length === 0) return;
+
     suggestions.forEach(sug => {
         const chip = document.createElement('div');
         chip.className = 'suggestion-chip';
-        // Icône différente selon le mode
-        chip.innerText = type === 'completion' ? `📝 ${sug}` : `➡️ ${sug}`;
+
+        const icon = type === 'completion' ? '📝' : '➡️';
+        chip.innerHTML = `<span class="chip-icon">${icon}</span> ${sug}`;
+
         chip.onclick = () => applySuggestion(sug, type);
         suggestionsBar.appendChild(chip);
     });
@@ -108,15 +125,16 @@ function applySuggestion(word, type) {
     const text = editor.value;
 
     if (type === 'completion') {
-        const words = text.split(' ');
-        words[words.length - 1] = word;
-        editor.value = words.join(' ') + " ";
+        // Remplacer le dernier mot en cours de frappe
+        const parts = text.split(/(\s+)/);
+        parts[parts.length - 1] = word;
+        editor.value = parts.join('') + " ";
     } else {
+        // Ajouter le mot prédit
         editor.value = text.trim() + " " + word + " ";
     }
 
     editor.focus();
-    updateOverlay();
-    suggestionsBar.innerHTML = "";
-    checkSpelling();
+    syncOverlay();
+    analyzeText(); // Relancer l'analyse immédiatement
 }

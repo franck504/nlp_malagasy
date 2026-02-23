@@ -1,32 +1,41 @@
 <!DOCTYPE html>
 <html lang="mg">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Voambolana Malagasy — Éditeur Intelligent</title>
+    <title>Voambolana Malagasy — Éditeur IA</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
+
 <body>
     <div class="container">
-        <h1>Voambolana Malagasy</h1>
-        <p class="subtitle">Éditeur intelligent avec correcteur et prédiction en temps réel.</p>
-        
-        <div class="suggestions-bar" id="suggestions">
-            <!-- Les suggestions apparaîtront ici -->
+        <header>
+            <h1>Voambolana Malagasy</h1>
+            <p class="subtitle">Intelligence Artificielle au service de la langue malgache.</p>
+        </header>
+
+        <div class="suggestions-wrapper" id="suggestions">
+            <!-- Suggestions dynamiques ici -->
         </div>
 
-        <div class="editor-wrapper">
+        <div class="editor-container">
             <div id="overlay"></div>
-            <textarea id="editor" placeholder="Atombohy eto ny fanoratana..."></textarea>
+            <textarea id="editor" spellcheck="false"
+                placeholder="Atombohy eto ny fanoratana (Ex: Tiako ianao...)"></textarea>
         </div>
 
-        <div class="status-bar">
-            <div>Mode: <span class="badge">IA FastText Locale</span></div>
+        <footer class="footer">
+            <div class="status-indicator">
+                <div class="dot" id="status-dot"></div>
+                <span id="status-text">Vonona</span>
+            </div>
             <div id="word-count">0 teny</div>
-            <div id="status">Sava-ria: Vonona</div>
-        </div>
+            <div><span class="badge">FastText MG v2.0</span></div>
+        </footer>
     </div>
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
+
 </html>

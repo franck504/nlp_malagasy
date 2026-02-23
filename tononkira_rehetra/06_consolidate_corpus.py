@@ -67,18 +67,19 @@ def consolidate_corpus(lyrics_path, bible_dir, wiki_path, output_path, deduplica
             print("📖 Chargement de Wikipedia Malagasy...")
             wiki_added = 0
             with open(wiki_path, 'r', encoding='utf-8') as f_wiki:
-                # On traite par paragraphes pour garder une granularité cohérente
-                content = f_wiki.read()
-                # On ignore les lignes de titres "--- Titre ---" lors du split si possible
-                # ou on les garde comme contexte. Ici, on va split par \n\n
-                blocks = content.split("\n\n")
-                for block in blocks:
-                    clean_b = block.strip()
-                    if not clean_b or clean_b.startswith("--- "): continue
+                # On traite par paragraphes
+                for line in f_wiki:
+                    clean_line = line.strip()
+                    # On ignore les lignes vides et les lignes de titre
+                    if not clean_line or clean_line.startswith("--- "):
+                        continue
+                    
                     if deduplicate:
-                        if clean_b in seen_blocks: continue
-                        seen_blocks.add(clean_b)
-                    f_out.write(clean_b + "\n\n")
+                        if clean_line in seen_blocks:
+                            continue
+                        seen_blocks.add(clean_line)
+                    
+                    f_out.write(clean_line + "\n\n")
                     wiki_added += 1
                     total_blocks += 1
             print(f"   ✅ {wiki_added} paragraphes Wikipedia ajoutés.")

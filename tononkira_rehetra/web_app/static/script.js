@@ -14,7 +14,7 @@ editor.addEventListener('input', () => {
     debounceTimer = setTimeout(() => {
         checkSpelling();
         getPredictions();
-    }, 500); // On attend 500ms après l'arrêt de la frappe
+    }, 400); // Un peu plus rapide
 });
 
 function updateWordCount() {
@@ -24,13 +24,10 @@ function updateWordCount() {
 }
 
 function updateOverlay() {
-    // On synchronise le texte de l'overlay (transparent) avec le textarea
-    // pour que les soulignages rouges tombent exactement sur les bons mots.
     overlay.innerText = editor.value;
     overlay.scrollTop = editor.scrollTop;
 }
 
-// Synchroniser le scroll
 editor.addEventListener('scroll', () => {
     overlay.scrollTop = editor.scrollTop;
 });
@@ -65,7 +62,6 @@ async function checkSpelling() {
 
 function highlightErrors(text, errors) {
     let html = text;
-    // On trie les erreurs par longueur (décroissant) pour éviter de casser le HTML
     const sortedErrors = [...new Set(errors)].sort((a, b) => b.length - a.length);
 
     sortedErrors.forEach(err => {
@@ -78,7 +74,7 @@ function highlightErrors(text, errors) {
 
 async function getPredictions() {
     const text = editor.value;
-    if (!text || !text.endsWith(' ')) {
+    if (!text) {
         suggestionsBar.innerHTML = "";
         return;
     }
@@ -90,25 +86,35 @@ async function getPredictions() {
             body: JSON.stringify({ text })
         });
         const data = await response.json();
-        displaySuggestions(data.suggestions);
+        displaySuggestions(data.suggestions, data.type);
     } catch (e) {
         console.error("Erreur de prédiction:", e);
     }
 }
 
-function displaySuggestions(suggestions) {
+function displaySuggestions(suggestions, type) {
     suggestionsBar.innerHTML = "";
     suggestions.forEach(sug => {
         const chip = document.createElement('div');
         chip.className = 'suggestion-chip';
-        chip.innerText = sug;
-        chip.onclick = () => applySuggestion(sug);
+        // Icône différente selon le mode
+        chip.innerText = type === 'completion' ? `📝 ${sug}` : `➡️ ${sug}`;
+        chip.onclick = () => applySuggestion(sug, type);
         suggestionsBar.appendChild(chip);
     });
 }
 
-function applySuggestion(word) {
-    editor.value = editor.value.trim() + " " + word + " ";
+function applySuggestion(word, type) {
+    const text = editor.value;
+
+    if (type === 'completion') {
+        const words = text.split(' ');
+        words[words.length - 1] = word;
+        editor.value = words.join(' ') + " ";
+    } else {
+        editor.value = text.trim() + " " + word + " ";
+    }
+
     editor.focus();
     updateOverlay();
     suggestionsBar.innerHTML = "";

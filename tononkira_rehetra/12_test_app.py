@@ -22,17 +22,38 @@ class MalagasyNLPApp:
         return np.mean(vectors, axis=0)
 
     def build_index(self):
-        """Indexe sémantiquement tous les fichiers .txt du dossier corpus."""
+        """Indexe sémantiquement les chansons (via bundle ou fichiers)."""
         if os.path.exists(self.index_path):
             print(f"ℹ️ Index existant trouvé ({self.index_path}). Chargement...")
             with open(self.index_path, 'r', encoding='utf-8') as f:
                 self.song_index = json.load(f)
             return
 
-        print(f"🏗️ Création de l'index sémantique depuis {self.corpus_dir}...")
+        # Tentative de chargement via le bundle JSON (beaucoup plus rapide sur Drive)
+        bundle_path = "songs_bundle.json"
+        if os.path.exists(bundle_path):
+            print(f"🚀 Chargement via BUNDLE TURBO ({bundle_path})...")
+            with open(bundle_path, 'r', encoding='utf-8') as f:
+                all_songs = json.load(f)
+            
+            indexed_data = []
+            for song in tqdm(all_songs, desc="Indexation sémantique"):
+                vector = self.get_sentence_vector(song["content"])
+                indexed_data.append({
+                    "artist": song["artist"],
+                    "title": song["title"],
+                    "vector": vector.tolist(),
+                    "snippet": song["content"][:200] + "..."
+                })
+            
+            self.song_index = indexed_data
+            with open(self.index_path, 'w', encoding='utf-8') as f:
+                json.dump(indexed_data, f)
+            print(f"✅ Indexation terminée : {len(indexed_data)} chansons indexées.")
+            return
+
+        print(f"🏗️ Création de l'index depuis {self.corpus_dir} (Attention : lent sur Drive)...")
         indexed_data = []
-        
-        # Parcourir Artistes/Chansons
         if not os.path.exists(self.corpus_dir):
             print(f"❌ Erreur : Dossier {self.corpus_dir} introuvable.")
             return
@@ -65,30 +86,24 @@ class MalagasyNLPApp:
         """Recherche par sens."""
         query_vec = self.get_sentence_vector(query)
         similarities = []
-        
         for item in self.song_index:
             item_vec = np.array(item["vector"])
             norm_a = np.linalg.norm(query_vec)
             norm_b = np.linalg.norm(item_vec)
-            if norm_a == 0 or norm_b == 0:
-                score = 0
-            else:
-                score = np.dot(query_vec, item_vec) / (norm_a * norm_b)
+            score = np.dot(query_vec, item_vec) / (norm_a * norm_b) if norm_a > 0 and norm_b > 0 else 0
             similarities.append((score, item))
-            
         similarities.sort(key=lambda x: x[0], reverse=True)
         return similarities[:top_k]
 
     def spell_check(self, word):
-        """Suggère des corrections basées sur FastText."""
+        """Suggère des corrections."""
         try:
-            similars = self.model.wv.most_similar(word, topn=3)
-            return [s[0] for s in similars]
+            return [s[0] for s in self.model.wv.most_similar(word, topn=3)]
         except:
             return []
 
     def explore_concept(self, word):
-        """Affiche le 'nuage' sémantique d'un mot."""
+        """Affiche le 'nuage' sémantique."""
         try:
             return self.model.wv.most_similar(word, topn=10)
         except:
@@ -97,17 +112,16 @@ class MalagasyNLPApp:
     def solve_analogy(self, a, b, c):
         """A est à B ce que C est à ?"""
         try:
-            res = self.model.wv.most_similar(positive=[b, c], negative=[a], topn=3)
-            return [r[0] for r in res]
+            return [r[0] for r in self.model.wv.most_similar(positive=[b, c], negative=[a], topn=3)]
         except:
             return []
 
     def detect_style(self, text):
         """Style Bible, Wikipédia ou Lyrics."""
         anchors = {
-            "Bible": ["andriamanitra", "jesosy", "famonjena", "israely", "tenindriamanitra"],
-            "Wikipedia": ["tantara", "jeografia", "politika", "firenena", "siansa"],
-            "Lyrics": ["fitiavana", "hira", "foko", "malala", "tsiky"]
+            "Bible": ["andriamanitra", "jesosy", "famonjena", "israely"],
+            "Wikipedia": ["tantara", "jeografia", "politika", "firenena"],
+            "Lyrics": ["fitiavana", "hira", "foko", "malala"]
         }
         text_vec = self.get_sentence_vector(text)
         scores = {}
@@ -115,8 +129,7 @@ class MalagasyNLPApp:
             anchor_vec = self.get_sentence_vector(" ".join(words))
             norm_a = np.linalg.norm(text_vec)
             norm_b = np.linalg.norm(anchor_vec)
-            score = np.dot(text_vec, anchor_vec) / (norm_a * norm_b) if norm_a > 0 and norm_b > 0 else 0
-            scores[name] = score
+            scores[name] = np.dot(text_vec, anchor_vec) / (norm_a * norm_b) if norm_a > 0 and norm_b > 0 else 0
         return sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
 def main():
@@ -124,16 +137,12 @@ def main():
     parser.add_argument("--query", type=str, help="Recherche sémantique")
     parser.add_argument("--spell", type=str, help="Correction")
     parser.add_argument("--explore", type=str, help="Exploration")
-    parser.add_argument("--analogy", type=str, nargs=3, help="Analogy A B C")
-    parser.add_argument("--style", type=str, help="Style detection")
+    parser.add_argument("--analogy", type=str, nargs=3, help="Analogie A B C")
+    parser.add_argument("--style", type=str, help="Détection de style")
     parser.add_argument("--index", action="store_true", help="Réindexer")
     
     args = parser.parse_args()
-    
-    app = MalagasyNLPApp(
-        model_path="embeddings_mg/malagasy_fasttext.model", 
-        corpus_dir="output"
-    )
+    app = MalagasyNLPApp(model_path="embeddings_mg/malagasy_fasttext.model", corpus_dir="output")
     
     if args.index:
         if os.path.exists("semantic_index.json"): os.remove("semantic_index.json")

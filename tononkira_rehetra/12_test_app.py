@@ -33,6 +33,10 @@ class MalagasyNLPApp:
         indexed_data = []
         
         # Parcourir Artistes/Chansons
+        if not os.path.exists(self.corpus_dir):
+            print(f"❌ Erreur : Dossier {self.corpus_dir} introuvable.")
+            return
+
         artists = [d for d in os.listdir(self.corpus_dir) if os.path.isdir(os.path.join(self.corpus_dir, d))]
         for artist in tqdm(artists, desc="Indexation des artistes"):
             artist_path = os.path.join(self.corpus_dir, artist)
@@ -42,7 +46,6 @@ class MalagasyNLPApp:
                     try:
                         with open(path, 'r', encoding='utf-8') as f:
                             content = f.read()
-                            # On prend le vecteur moyen du texte
                             vector = self.get_sentence_vector(content)
                             indexed_data.append({
                                 "artist": artist,
@@ -65,7 +68,6 @@ class MalagasyNLPApp:
         
         for item in self.song_index:
             item_vec = np.array(item["vector"])
-            # Similarité cosinus
             norm_a = np.linalg.norm(query_vec)
             norm_b = np.linalg.norm(item_vec)
             if norm_a == 0 or norm_b == 0:
@@ -74,14 +76,12 @@ class MalagasyNLPApp:
                 score = np.dot(query_vec, item_vec) / (norm_a * norm_b)
             similarities.append((score, item))
             
-        # Trier par score décroissant
         similarities.sort(key=lambda x: x[0], reverse=True)
         return similarities[:top_k]
 
     def spell_check(self, word):
         """Suggère des corrections basées sur FastText."""
         try:
-            # FastText est excellent pour ça car il connaît les subwords
             similars = self.model.wv.most_similar(word, topn=3)
             return [s[0] for s in similars]
         except:
@@ -94,12 +94,39 @@ class MalagasyNLPApp:
         except:
             return []
 
+    def solve_analogy(self, a, b, c):
+        """A est à B ce que C est à ?"""
+        try:
+            res = self.model.wv.most_similar(positive=[b, c], negative=[a], topn=3)
+            return [r[0] for r in res]
+        except:
+            return []
+
+    def detect_style(self, text):
+        """Style Bible, Wikipédia ou Lyrics."""
+        anchors = {
+            "Bible": ["andriamanitra", "jesosy", "famonjena", "israely", "tenindriamanitra"],
+            "Wikipedia": ["tantara", "jeografia", "politika", "firenena", "siansa"],
+            "Lyrics": ["fitiavana", "hira", "foko", "malala", "tsiky"]
+        }
+        text_vec = self.get_sentence_vector(text)
+        scores = {}
+        for name, words in anchors.items():
+            anchor_vec = self.get_sentence_vector(" ".join(words))
+            norm_a = np.linalg.norm(text_vec)
+            norm_b = np.linalg.norm(anchor_vec)
+            score = np.dot(text_vec, anchor_vec) / (norm_a * norm_b) if norm_a > 0 and norm_b > 0 else 0
+            scores[name] = score
+        return sorted(scores.items(), key=lambda x: x[1], reverse=True)
+
 def main():
     parser = argparse.ArgumentParser(description="Application de test NLP Malagasy.")
-    parser.add_argument("--query", type=str, help="Requête de recherche sémantique")
-    parser.add_argument("--spell", type=str, help="Mot à corriger")
-    parser.add_argument("--explore", type=str, help="Concept à explorer")
-    parser.add_argument("--index", action="store_true", help="Force la reconstruction de l'index")
+    parser.add_argument("--query", type=str, help="Recherche sémantique")
+    parser.add_argument("--spell", type=str, help="Correction")
+    parser.add_argument("--explore", type=str, help="Exploration")
+    parser.add_argument("--analogy", type=str, nargs=3, help="Analogy A B C")
+    parser.add_argument("--style", type=str, help="Style detection")
+    parser.add_argument("--index", action="store_true", help="Réindexer")
     
     args = parser.parse_args()
     
@@ -110,31 +137,23 @@ def main():
     
     if args.index:
         if os.path.exists("semantic_index.json"): os.remove("semantic_index.json")
-        app.build_index()
-        return
-
     app.build_index()
 
-    print("\n" + "="*50)
+    print("\n" + "="*55)
     if args.spell:
-        print(f"📝 CORRECTION POUR : '{args.spell}'")
-        suggestions = app.spell_check(args.spell)
-        print(f"👉 Suggestions : {', '.join(suggestions)}")
-    
+        print(f"📝 CORRECTION : '{args.spell}' suggestions -> {', '.join(app.spell_check(args.spell))}")
     if args.explore:
-        print(f"🧠 EXPLORATION DU CONCEPT : '{args.explore}'")
-        relatives = app.explore_concept(args.explore)
-        for word, score in relatives:
-            print(f"   - {word:<20} (score: {score:.4f})")
-            
+        print(f"🧠 CONCEPT : '{args.explore}'")
+        for word, score in app.explore_concept(args.explore): print(f"   - {word:<20} ({score:.4f})")
+    if args.analogy:
+        print(f"⚖️ ANALOGIE : '{args.analogy[0]}' -> '{args.analogy[1]}' comme '{args.analogy[2]}' -> {', '.join(app.solve_analogy(*args.analogy))}")
+    if args.style:
+        print(f"🎭 STYLE : '{args.style}'")
+        for s, sc in app.detect_style(args.style): print(f"   - {s:<15} ({sc:.4f})")
     if args.query:
-        print(f"🔍 RECHERCHE SÉMANTIQUE : '{args.query}'")
-        results = app.semantic_search(args.query)
-        for score, item in results:
-            print(f"[{score:.4f}] {item['artist']} - {item['title']}")
-            print(f"      Extrait: {item['snippet'].replace('\\n', ' ')}")
-            print("-" * 30)
-    print("="*50 + "\n")
+        print(f"🔍 RECHERCHE : '{args.query}'")
+        for s, i in app.semantic_search(args.query): print(f"[{s:.4f}] {i['artist']} - {i['title']}\n      {i['snippet']}")
+    print("="*55)
 
 if __name__ == "__main__":
     main()

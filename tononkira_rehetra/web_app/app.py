@@ -18,6 +18,12 @@ def load_model():
     else:
         print(f"⚠️ Modèle introuvable à {MODEL_PATH}. L'app fonctionnera sans IA.")
 
+def get_word_freq(w):
+    try:
+        return model.wv.get_vecattr(w.lower(), "count")
+    except:
+        return 0
+
 @app.route('/')
 def index():
     response = make_response(render_template('index.html'))
@@ -38,21 +44,41 @@ def check():
     words = re.findall(r"\b[a-zA-Zà-ÿ'-]+\b", text)
     errors = []
     
+    print(f"\n--- Analyse de texte ---")
+    
     for word in words:
         word_lower = word.lower()
-        # 1. Vérification directe dans le vocabulaire
-        if word_lower not in model.wv:
-            # 2. Vérification sémantique pour les mots "inconnus"
+        freq = get_word_freq(word_lower)
+        
+        # LOGIQUE DÉTECTION :
+        # Un mot est considéré "Correct" si :
+        # 1. Il est fréquent dans le corpus (freq >= 5)
+        # 2. OU il est moyennement fréquent (1-4) ET il a un score de confiance sémantique très élevé
+        
+        is_error = False
+        
+        if freq < 5:
+            # Si le mot est rare ou absent, on demande l'avis sémantique de l'IA
             try:
-                # FastText génère un vecteur même pour l'inconnu. 
                 similars = model.wv.most_similar(word_lower, topn=1)
                 score = similars[0][1]
-                # Seuil relevé à 0.80 pour détecter les fautes plus facilement
-                if score < 0.80: 
-                    errors.append(word)
-                    print(f"🚩 Faute détectée : '{word}' (Score: {score:.4f})")
+                
+                # Seuil de tolérance : 
+                # Si le mot est absent (freq=0) et score < 0.85 -> Erreur
+                # Si le mot est très rare (freq < 5) et score < 0.75 -> Erreur
+                if freq == 0 and score < 0.85:
+                    is_error = True
+                elif freq > 0 and score < 0.70:
+                    is_error = True
+                    
+                if is_error:
+                    print(f"🚩 FAUTE : '{word}' (Freq: {freq}, Score: {score:.4f})")
             except:
-                errors.append(word)
+                is_error = True
+                print(f"🚩 FAUTE : '{word}' (Mot inconnu et impossible à analyser)")
+
+        if is_error:
+            errors.append(word)
                 
     return jsonify({"errors": errors})
 
@@ -73,6 +99,7 @@ def predict():
         if len(last_word_part) < 2:
             return jsonify({"suggestions": []})
             
+        # PRIORITÉ : index_to_key est trié par fréquence décroissante.
         suggestions = [w for w in model.wv.index_to_key if w.startswith(last_word_part)][:5]
         return jsonify({"suggestions": suggestions, "type": "completion"})
         
@@ -93,5 +120,4 @@ def predict():
 
 if __name__ == '__main__':
     load_model()
-    # Debug=True avec use_reloader=False 
     app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)

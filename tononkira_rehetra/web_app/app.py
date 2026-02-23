@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, make_response
 from gensim.models import FastText
 import os
 import re
@@ -20,7 +20,11 @@ def load_model():
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    response = make_response(render_template('index.html'))
+    # On force le navigateur à ne pas mettre en cache pour le développement
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    return response
 
 @app.route('/check', methods=['POST'])
 def check():
@@ -30,17 +34,24 @@ def check():
     data = request.json
     text = data.get("text", "")
     
-    # Extraction des mots (on garde la ponctuation pour le mapping)
-    words = re.findall(r"\b\w+\b", text)
+    # On ignore les nombres et les symboles, on ne garde que les lettres et tirets
+    words = re.findall(r"\b[a-zA-Zà-ÿ'-]+\b", text)
     errors = []
     
     for word in words:
         word_lower = word.lower()
-        # Si le mot n'est pas dans le vocabulaire connu
+        # 1. Vérification directe dans le vocabulaire
         if word_lower not in model.wv:
-            # On vérifie si FastText peut le "comprendre" quand même (subwords)
-            similars = model.wv.most_similar(word_lower, topn=1)
-            if similars[0][1] < 0.7: # Seuil de confiance arbitraire
+            # 2. Vérification sémantique pour les mots "inconnus"
+            try:
+                # FastText génère un vecteur même pour l'inconnu. 
+                similars = model.wv.most_similar(word_lower, topn=1)
+                score = similars[0][1]
+                # Seuil relevé à 0.80 pour détecter les fautes plus facilement
+                if score < 0.80: 
+                    errors.append(word)
+                    print(f"🚩 Faute détectée : '{word}' (Score: {score:.4f})")
+            except:
                 errors.append(word)
                 
     return jsonify({"errors": errors})
@@ -56,32 +67,31 @@ def predict():
     if not text:
         return jsonify({"suggestions": []})
         
-    # Cas 1 : L'utilisateur est en train de taper un mot (pas d'espace à la fin)
-    # On fait de l'AUTO-COMPLÉTION (Prefix Search)
+    # Cas 1 : AUTO-COMPLÉTION (Prefix Search)
     if not text.endswith(' '):
         last_word_part = text.split()[-1].lower()
         if len(last_word_part) < 2:
             return jsonify({"suggestions": []})
             
-        # On cherche dans le vocabulaire les mots qui commencent par ce préfixe
         suggestions = [w for w in model.wv.index_to_key if w.startswith(last_word_part)][:5]
         return jsonify({"suggestions": suggestions, "type": "completion"})
         
-    # Cas 2 : L'utilisateur a fini un mot (espace à la fin)
-    # On fait de la PRÉDICTION du mot suivant (Contextual)
+    # Cas 2 : PRÉDICTION DU MOT SUIVANT (Contextual)
     else:
         last_word = text.strip().split()[-1].lower()
         try:
-            # FastText donne des mots sémantiquement proches
-            raw_suggestions = model.wv.most_similar(last_word, topn=10)
-            
-            # On filtre pour éviter les répétitions et garder les 3 meilleurs
-            suggestions = [s[0] for s in raw_suggestions if s[0] != last_word][:3]
+            raw_suggestions = model.wv.most_similar(last_word, topn=15)
+            suggestions = []
+            for s in raw_suggestions:
+                s_word = s[0]
+                if s_word != last_word and not s_word.startswith(last_word[:4]):
+                    suggestions.append(s_word)
+                if len(suggestions) >= 3: break
             return jsonify({"suggestions": suggestions, "type": "prediction"})
         except:
             return jsonify({"suggestions": []})
 
 if __name__ == '__main__':
     load_model()
-    # On désactive use_reloader pour éviter le double chargement de RAM
+    # Debug=True avec use_reloader=False 
     app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
